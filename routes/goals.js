@@ -11,17 +11,19 @@ router.get("/", async (req, res) => {
   if (!username) return res.status(400).json({ error: "Username required" });
 
   try {
-    const [goals] = await pool.query(
-      "SELECT * FROM goals WHERE username = ? ORDER BY created_at DESC",
+    const goalsResult = await pool.query(
+      "SELECT * FROM goals WHERE username = $1 ORDER BY created_at DESC",
       [username]
     );
 
+    const goals = goalsResult.rows;
+
     for (let goal of goals) {
-      const [entries] = await pool.query(
-        "SELECT * FROM journal WHERE goal_id = ? ORDER BY created_at DESC",
+      const entriesResult = await pool.query(
+        "SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC",
         [goal.id]
       );
-      goal.journal = entries;
+      goal.journal = entriesResult.rows;
     }
 
     res.json(goals);
@@ -40,43 +42,32 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    // generate slug candidate
     let baseSlug = slugify(title, { lower: true, strict: true }) || "goal";
     let uniqueSlug = baseSlug;
     let suffix = 1;
 
-    // ensure uniqueness per user
-    let [existing] = await pool.query(
-      "SELECT id FROM goals WHERE username = ? AND slug = ?",
+    let existingResult = await pool.query(
+      "SELECT id FROM goals WHERE username = $1 AND slug = $2",
       [username, uniqueSlug]
     );
-    while (existing.length > 0) {
+
+    while (existingResult.rows.length > 0) {
       uniqueSlug = `${baseSlug}-${suffix++}`;
-      [existing] = await pool.query(
-        "SELECT id FROM goals WHERE username = ? AND slug = ?",
+      existingResult = await pool.query(
+        "SELECT id FROM goals WHERE username = $1 AND slug = $2",
         [username, uniqueSlug]
       );
     }
 
-    const [result] = await pool.query(
+    const insertResult = await pool.query(
       `INSERT INTO goals 
         (username, title, description, category, timeframe, motivation, slug, public, created_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, NOW())`,
-      [
-        username,
-        title,
-        description || "",
-        category,
-        timeframe,
-        motivation || "",
-        uniqueSlug,
-      ]
+       VALUES ($1, $2, $3, $4, $5, $6, $7, false, NOW())
+       RETURNING *`,
+      [username, title, description || "", category, timeframe, motivation || "", uniqueSlug]
     );
 
-    const [newGoal] = await pool.query("SELECT * FROM goals WHERE id = ?", [
-      result.insertId,
-    ]);
-    res.status(201).json(newGoal[0]);
+    res.status(201).json(insertResult.rows[0]);
   } catch (err) {
     console.error("Error creating goal:", err);
     res.status(500).json({ error: "Server error" });
@@ -88,20 +79,21 @@ router.get("/public/:username/:slug", async (req, res) => {
   const { username, slug } = req.params;
 
   try {
-    const [goals] = await pool.query(
-      "SELECT * FROM goals WHERE username = ? AND slug = ? AND public = 1 LIMIT 1",
+    const goalsResult = await pool.query(
+      "SELECT * FROM goals WHERE username = $1 AND slug = $2 AND public = true LIMIT 1",
       [username, slug]
     );
 
-    if (!goals.length) return res.status(404).json({ error: "Goal not found" });
+    if (goalsResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
 
-    const goal = goals[0];
-    const [entries] = await pool.query(
-      "SELECT * FROM journal WHERE goal_id = ? ORDER BY created_at DESC",
+    const goal = goalsResult.rows[0];
+
+    const entriesResult = await pool.query(
+      "SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC",
       [goal.id]
     );
 
-    goal.journal = entries;
+    goal.journal = entriesResult.rows;
     res.json(goal);
   } catch (err) {
     console.error("Error fetching public goal:", err);
@@ -113,42 +105,40 @@ router.get("/public/:username/:slug", async (req, res) => {
 router.patch("/:id", async (req, res) => {
   const { id } = req.params;
   const patch = req.body || {};
-  if (Object.keys(patch).length === 0)
-    return res.status(400).json({ error: "No fields to update" });
+  if (Object.keys(patch).length === 0) return res.status(400).json({ error: "No fields to update" });
 
   try {
-    // slug uniqueness if updating slug
     if (patch.slug) {
       let baseSlug = slugify(patch.slug, { lower: true, strict: true });
       let uniqueSlug = baseSlug;
       let suffix = 1;
-      let [existing] = await pool.query(
-        "SELECT id FROM goals WHERE slug = ? AND id != ?",
+
+      let existingResult = await pool.query(
+        "SELECT id FROM goals WHERE slug = $1 AND id != $2",
         [uniqueSlug, id]
       );
-      while (existing.length > 0) {
+
+      while (existingResult.rows.length > 0) {
         uniqueSlug = `${baseSlug}-${suffix++}`;
-        [existing] = await pool.query(
-          "SELECT id FROM goals WHERE slug = ? AND id != ?",
+        existingResult = await pool.query(
+          "SELECT id FROM goals WHERE slug = $1 AND id != $2",
           [uniqueSlug, id]
         );
       }
+
       patch.slug = uniqueSlug;
     }
 
     const fields = Object.keys(patch);
     const values = Object.values(patch);
 
-    const sql = `UPDATE goals SET ${fields
-      .map((f) => `${f} = ?`)
-      .join(", ")} WHERE id = ?`;
-    await pool.query(sql, [...values, id]);
+    const setString = fields.map((f, i) => `"${f}" = $${i + 1}`).join(", ");
+    await pool.query(`UPDATE goals SET ${setString} WHERE id = $${fields.length + 1}`, [...values, id]);
 
-    const [updated] = await pool.query("SELECT * FROM goals WHERE id = ?", [
-      id,
-    ]);
-    if (!updated.length) return res.status(404).json({ error: "Goal not found" });
-    res.json(updated[0]);
+    const updatedResult = await pool.query("SELECT * FROM goals WHERE id = $1", [id]);
+    if (updatedResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+
+    res.json(updatedResult.rows[0]);
   } catch (err) {
     console.error("Error updating goal:", err);
     res.status(500).json({ error: "Server error" });
@@ -168,37 +158,34 @@ router.patch("/:id/public", async (req, res) => {
     let slugToUse = slug || null;
 
     if (isPublic && slugToUse) {
-      // ensure slug unique
       let baseSlug = slugify(slugToUse, { lower: true, strict: true });
       let uniqueSlug = baseSlug;
       let suffix = 1;
-      let [existing] = await pool.query(
-        "SELECT id FROM goals WHERE slug = ? AND id != ?",
+
+      let existingResult = await pool.query(
+        "SELECT id FROM goals WHERE slug = $1 AND id != $2",
         [uniqueSlug, id]
       );
-      while (existing.length > 0) {
+
+      while (existingResult.rows.length > 0) {
         uniqueSlug = `${baseSlug}-${suffix++}`;
-        [existing] = await pool.query(
-          "SELECT id FROM goals WHERE slug = ? AND id != ?",
+        existingResult = await pool.query(
+          "SELECT id FROM goals WHERE slug = $1 AND id != $2",
           [uniqueSlug, id]
         );
       }
+
       slugToUse = uniqueSlug;
     }
 
-    await pool.query("UPDATE goals SET public = ?, slug = ? WHERE id = ?", [
-      isPublic ? 1 : 0,
-      slugToUse,
-      id,
-    ]);
+    const updatedResult = await pool.query(
+      "UPDATE goals SET public = $1, slug = $2 WHERE id = $3 RETURNING *",
+      [isPublic, slugToUse, id]
+    );
 
-    const [updatedGoal] = await pool.query("SELECT * FROM goals WHERE id = ?", [
-      id,
-    ]);
-    if (!updatedGoal.length)
-      return res.status(404).json({ error: "Goal not found" });
+    if (updatedResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
 
-    res.json(updatedGoal[0]);
+    res.json(updatedResult.rows[0]);
   } catch (err) {
     console.error("Error toggling public goal:", err);
     res.status(500).json({ error: "Server error" });
@@ -209,11 +196,9 @@ router.patch("/:id/public", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    // remove journal entries first (if not cascading in DB)
-    await pool.query("DELETE FROM journal WHERE goal_id = ?", [id]);
-    const [result] = await pool.query("DELETE FROM goals WHERE id = ?", [id]);
-    if (result.affectedRows === 0)
-      return res.status(404).json({ error: "Goal not found" });
+    await pool.query("DELETE FROM journal WHERE goal_id = $1", [id]);
+    const result = await pool.query("DELETE FROM goals WHERE id = $1", [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Goal not found" });
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting goal:", err);

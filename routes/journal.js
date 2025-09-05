@@ -10,11 +10,11 @@ router.get("/", async (req, res) => {
   if (!goal_id) return res.status(400).json({ error: "Missing goal_id" });
 
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM journal WHERE goal_id = ? ORDER BY created_at DESC",
+    const result = await pool.query(
+      "SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC",
       [goal_id]
     );
-    res.json(rows);
+    res.json(result.rows);
   } catch (err) {
     console.error("Error fetching journal:", err);
     res.status(500).json({ error: "Server error" });
@@ -32,16 +32,14 @@ router.post("/", async (req, res) => {
   }
 
   try {
-    const [result] = await pool.query(
-      "INSERT INTO journal (goal_id, username, note, progress, created_at) VALUES (?, ?, ?, ?, NOW())",
+    const insert = await pool.query(
+      `INSERT INTO journal (goal_id, username, note, progress, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING *`,
       [goal_id, username, note || "", progress]
     );
 
-    const [entry] = await pool.query("SELECT * FROM journal WHERE id = ?", [
-      result.insertId,
-    ]);
-
-    res.status(201).json(entry[0]);
+    res.status(201).json(insert.rows[0]);
   } catch (err) {
     console.error("Error inserting journal:", err);
     res.status(500).json({ error: "Server error" });
@@ -52,8 +50,11 @@ router.post("/", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   const { id } = req.params;
   try {
-    const [result] = await pool.query("DELETE FROM journal WHERE id = ?", [id]);
-    if (result.affectedRows === 0) {
+    const result = await pool.query(
+      "DELETE FROM journal WHERE id = $1",
+      [id]
+    );
+    if (result.rowCount === 0) {
       return res.status(404).json({ error: "Journal entry not found" });
     }
     res.json({ success: true });

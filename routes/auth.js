@@ -1,6 +1,6 @@
 // backend/routes/auth.js
 import express from "express";
-import pool from "../db.js"; // Make sure this exports a working pool
+import pool from "../db.js"; 
 import bcrypt from "bcrypt";
 
 const router = express.Router();
@@ -12,24 +12,21 @@ router.post("/signup", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
 
   try {
-    // Check if user exists
-    const [existing] = await pool.query(
-      "SELECT * FROM users WHERE username = ?",
+    const existing = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
       [username]
     );
-    if (existing.length > 0)
+    if (existing.rows.length > 0)
       return res.status(400).json({ error: "Username already exists" });
 
-    // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
-    // Insert user
-    await pool.query(
-      "INSERT INTO users (username, password) VALUES (?, ?)",
+    const insert = await pool.query(
+      "INSERT INTO users (username, password) VALUES ($1, $2) RETURNING *",
       [username, hashed]
     );
 
-    res.json({ success: true });
+    res.json({ success: true, username: insert.rows[0].username });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Server error" });
@@ -43,15 +40,14 @@ router.post("/login", async (req, res) => {
     return res.status(400).json({ error: "Missing fields" });
 
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM users WHERE username = ?",
+    const result = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
       [username]
     );
-    if (rows.length === 0) return res.status(401).json({ error: "Invalid credentials" });
+    if (result.rows.length === 0)
+      return res.status(401).json({ error: "Invalid credentials" });
 
-    const user = rows[0];
-    if (!user.password) return res.status(500).json({ error: "No password stored" });
-
+    const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
@@ -61,29 +57,30 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
+
 // CHANGE PASSWORD
 router.post("/change-password", async (req, res) => {
   const { username, oldPassword, newPassword } = req.body;
-  if (!username || !oldPassword || !newPassword) {
+  if (!username || !oldPassword || !newPassword)
     return res.status(400).json({ error: "Missing fields" });
-  }
 
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM users WHERE username = ?",
+    const result = await pool.query(
+      "SELECT * FROM users WHERE username = $1",
       [username]
     );
-    if (rows.length === 0) return res.status(404).json({ error: "User not found" });
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: "User not found" });
 
-    const user = rows[0];
+    const user = result.rows[0];
     const valid = await bcrypt.compare(oldPassword, user.password);
     if (!valid) return res.status(401).json({ error: "Old password incorrect" });
 
     const hashed = await bcrypt.hash(newPassword, 10);
-    await pool.query("UPDATE users SET password = ? WHERE username = ?", [
-      hashed,
-      username,
-    ]);
+    await pool.query(
+      "UPDATE users SET password = $1 WHERE username = $2",
+      [hashed, username]
+    );
 
     res.json({ success: true, message: "Password updated" });
   } catch (err) {
@@ -93,7 +90,6 @@ router.post("/change-password", async (req, res) => {
 });
 
 // DELETE ACCOUNT
-// DELETE ACCOUNT
 router.delete("/delete-account", async (req, res) => {
   const { username } = req.body;
   if (!username) return res.status(400).json({ error: "Username required" });
@@ -101,19 +97,19 @@ router.delete("/delete-account", async (req, res) => {
   try {
     // Delete journals tied to user's goals
     await pool.query(
-      "DELETE FROM journal WHERE goal_id IN (SELECT id FROM goals WHERE username = ?)",
+      "DELETE FROM journal WHERE goal_id IN (SELECT id FROM goals WHERE username = $1)",
       [username]
     );
 
     // Delete goals
-    await pool.query("DELETE FROM goals WHERE username = ?", [username]);
+    await pool.query("DELETE FROM goals WHERE username = $1", [username]);
 
     // Delete user
-    const [result] = await pool.query("DELETE FROM users WHERE username = ?", [
+    const result = await pool.query("DELETE FROM users WHERE username = $1", [
       username,
     ]);
 
-    if (result.affectedRows === 0)
+    if (result.rowCount === 0)
       return res.status(404).json({ error: "User not found" });
 
     res.json({ success: true, message: "Account and all data deleted" });

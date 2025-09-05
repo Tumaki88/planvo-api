@@ -5,28 +5,29 @@ import pool from "../db.js";
 const router = express.Router();
 
 // Handle GET /:username/:slug
-router.get("/", async (req, res) => {
+router.get("/:username/:slug", async (req, res) => {
   const { username, slug } = req.params;
 
   try {
-    const [rows] = await pool.query(
-      "SELECT * FROM goals WHERE username = ? AND slug = ? AND public = 1 LIMIT 1",
+    // Fetch the public goal
+    const goalResult = await pool.query(
+      "SELECT * FROM goals WHERE username = $1 AND slug = $2 AND public = true LIMIT 1",
       [username, slug]
     );
 
-    if (!rows.length) {
+    if (goalResult.rows.length === 0) {
       return res.status(404).json({ error: "Goal not found" });
     }
 
-    const goal = rows[0];
+    const goal = goalResult.rows[0];
 
     // Attach journal entries
-    const [entries] = await pool.query(
-      "SELECT * FROM journal WHERE goal_id = ? ORDER BY created_at DESC",
+    const entriesResult = await pool.query(
+      "SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC",
       [goal.id]
     );
 
-    goal.journal = entries;
+    goal.journal = entriesResult.rows;
     res.json(goal);
   } catch (err) {
     console.error("Error fetching public goal:", err);

@@ -9,15 +9,15 @@ router.get("/", async (req, res) => {
     const { username } = req.query;
     if (!username) return res.status(400).json({ error: "Username required" });
 
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT e.*, g.title AS goal_title 
        FROM entries e 
        JOIN goals g ON e.goal_id = g.id 
-       WHERE g.username = ?`,
+       WHERE g.username = $1`,
       [username]
     );
 
-    res.json(rows);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch entries" });
@@ -28,19 +28,23 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   try {
     const { goal_id, progress, note, username } = req.body;
-    if (!goal_id || !username) return res.status(400).json({ error: "Goal ID & username required" });
+    if (!goal_id || !username)
+      return res.status(400).json({ error: "Goal ID & username required" });
 
     // Optional: validate that goal_id belongs to the user
-    const [goalRows] = await pool.query("SELECT * FROM goals WHERE id = ? AND username = ?", [goal_id, username]);
-    if (goalRows.length === 0) return res.status(403).json({ error: "Goal does not belong to this user" });
+    const goalCheck = await pool.query(
+      "SELECT * FROM goals WHERE id = $1 AND username = $2",
+      [goal_id, username]
+    );
+    if (goalCheck.rows.length === 0)
+      return res.status(403).json({ error: "Goal does not belong to this user" });
 
-    const [result] = await pool.query(
-      "INSERT INTO entries (goal_id, progress, note) VALUES (?, ?, ?)",
+    const insert = await pool.query(
+      "INSERT INTO entries (goal_id, progress, note) VALUES ($1, $2, $3) RETURNING *",
       [goal_id, progress, note]
     );
 
-    const [newEntry] = await pool.query("SELECT * FROM entries WHERE id = ?", [result.insertId]);
-    res.json(newEntry[0]);
+    res.json(insert.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create entry" });
