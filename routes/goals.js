@@ -206,4 +206,23 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+/* ------------------- GET all public goals ------------------- */
+// GET all public goals for Explore page
+router.get("/public", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, username, title, slug, description, timeframe, motivation, created_at 
+       FROM goals 
+       WHERE public = true 
+       ORDER BY created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error fetching public goals:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+
 export default router;
