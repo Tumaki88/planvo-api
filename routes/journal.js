@@ -45,9 +45,10 @@ router.post("/", auth, async (req, res) => {
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
     const insert = await pool.query(
-      "INSERT INTO journal (goal_id, note, progress, created_at) VALUES ($1, $2, $3, NOW()) RETURNING *",
-      [goal_id, note || "", progress]
-    );
+  "INSERT INTO journal (goal_id, username, note, progress, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
+  [goal_id, req.user.username, note || "", progress]
+);
+
 
     res.status(201).json(insert.rows[0]);
   } catch (err) {
