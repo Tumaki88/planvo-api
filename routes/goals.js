@@ -2,13 +2,13 @@
 import express from "express";
 import pool from "../db.js";
 import slugify from "slugify";
+import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
 /* ------------------- GET all goals for user ------------------- */
-router.get("/", async (req, res) => {
-  const { username } = req.query;
-  if (!username) return res.status(400).json({ error: "Username required" });
+router.get("/", auth, async (req, res) => {
+  const username = req.user.username;
 
   try {
     const goalsResult = await pool.query(
@@ -34,10 +34,11 @@ router.get("/", async (req, res) => {
 });
 
 /* ------------------- CREATE new goal ------------------- */
-router.post("/", async (req, res) => {
-  const { username, title, description, category, timeframe, motivation } =
-    req.body;
-  if (!username || !title || !category || !timeframe) {
+router.post("/", auth, async (req, res) => {
+  const username = req.user.username;
+  const { title, description, category, timeframe, motivation } = req.body;
+
+  if (!title || !category || !timeframe) {
     return res.status(400).json({ error: "Missing fields" });
   }
 
@@ -84,7 +85,8 @@ router.get("/public/:username/:slug", async (req, res) => {
       [username, slug]
     );
 
-    if (goalsResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+    if (goalsResult.rows.length === 0)
+      return res.status(404).json({ error: "Goal not found" });
 
     const goal = goalsResult.rows[0];
 
@@ -102,12 +104,22 @@ router.get("/public/:username/:slug", async (req, res) => {
 });
 
 /* ------------------- UPDATE goal (PATCH) ------------------- */
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", auth, async (req, res) => {
   const { id } = req.params;
+  const username = req.user.username;
   const patch = req.body || {};
-  if (Object.keys(patch).length === 0) return res.status(400).json({ error: "No fields to update" });
+
+  if (Object.keys(patch).length === 0)
+    return res.status(400).json({ error: "No fields to update" });
 
   try {
+    // Ensure the goal belongs to the user
+    const check = await pool.query("SELECT * FROM goals WHERE id = $1 AND username = $2", [
+      id,
+      username,
+    ]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+
     if (patch.slug) {
       let baseSlug = slugify(patch.slug, { lower: true, strict: true });
       let uniqueSlug = baseSlug;
@@ -133,11 +145,12 @@ router.patch("/:id", async (req, res) => {
     const values = Object.values(patch);
 
     const setString = fields.map((f, i) => `"${f}" = $${i + 1}`).join(", ");
-    await pool.query(`UPDATE goals SET ${setString} WHERE id = $${fields.length + 1}`, [...values, id]);
+    await pool.query(
+      `UPDATE goals SET ${setString} WHERE id = $${fields.length + 1}`,
+      [...values, id]
+    );
 
     const updatedResult = await pool.query("SELECT * FROM goals WHERE id = $1", [id]);
-    if (updatedResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
-
     res.json(updatedResult.rows[0]);
   } catch (err) {
     console.error("Error updating goal:", err);
@@ -146,8 +159,9 @@ router.patch("/:id", async (req, res) => {
 });
 
 /* ------------------- TOGGLE public/private ------------------- */
-router.patch("/:id/public", async (req, res) => {
+router.patch("/:id/public", auth, async (req, res) => {
   const { id } = req.params;
+  const username = req.user.username;
   const { public: isPublic, slug } = req.body;
 
   if (typeof isPublic !== "boolean") {
@@ -155,6 +169,13 @@ router.patch("/:id/public", async (req, res) => {
   }
 
   try {
+    // Ensure the goal belongs to the user
+    const check = await pool.query("SELECT * FROM goals WHERE id = $1 AND username = $2", [
+      id,
+      username,
+    ]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+
     let slugToUse = slug || null;
 
     if (isPublic && slugToUse) {
@@ -183,8 +204,6 @@ router.patch("/:id/public", async (req, res) => {
       [isPublic, slugToUse, id]
     );
 
-    if (updatedResult.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
-
     res.json(updatedResult.rows[0]);
   } catch (err) {
     console.error("Error toggling public goal:", err);
@@ -193,12 +212,20 @@ router.patch("/:id/public", async (req, res) => {
 });
 
 /* ------------------- DELETE goal ------------------- */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", auth, async (req, res) => {
   const { id } = req.params;
+  const username = req.user.username;
+
   try {
+    // Ensure the goal belongs to the user
+    const check = await pool.query("SELECT * FROM goals WHERE id = $1 AND username = $2", [
+      id,
+      username,
+    ]);
+    if (check.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+
     await pool.query("DELETE FROM journal WHERE goal_id = $1", [id]);
-    const result = await pool.query("DELETE FROM goals WHERE id = $1", [id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "Goal not found" });
+    await pool.query("DELETE FROM goals WHERE id = $1", [id]);
     res.json({ success: true });
   } catch (err) {
     console.error("Error deleting goal:", err);
@@ -222,7 +249,5 @@ router.get("/public", async (req, res) => {
     res.status(500).json({ error: "Server error" });
   }
 });
-
-
 
 export default router;
