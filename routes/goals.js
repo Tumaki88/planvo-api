@@ -33,47 +33,38 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-/* ------------------- CREATE new goal ------------------- */
 router.post("/", auth, async (req, res) => {
-  const username = req.user.username;
-  const { title, description, category, timeframe, motivation } = req.body;
+  const { goal_id, note, progress } = req.body;
 
-  if (!title || !category || !timeframe) {
+  if (!goal_id || progress === undefined)
     return res.status(400).json({ error: "Missing fields" });
-  }
+
+  if (typeof progress !== "number" || progress < 0 || progress > 100)
+    return res.status(400).json({ error: "`progress` must be 0–100" });
 
   try {
-    let baseSlug = slugify(title, { lower: true, strict: true }) || "goal";
-    let uniqueSlug = baseSlug;
-    let suffix = 1;
-
-    let existingResult = await pool.query(
-      "SELECT id FROM goals WHERE username = $1 AND slug = $2",
-      [username, uniqueSlug]
+    // Verify goal belongs to user
+    const goalCheck = await pool.query(
+      "SELECT * FROM goals WHERE id = $1 AND username = $2",
+      [goal_id, req.user.username]
     );
+    if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    while (existingResult.rows.length > 0) {
-      uniqueSlug = `${baseSlug}-${suffix++}`;
-      existingResult = await pool.query(
-        "SELECT id FROM goals WHERE username = $1 AND slug = $2",
-        [username, uniqueSlug]
-      );
-    }
-
-    const insertResult = await pool.query(
-      `INSERT INTO goals 
-        (username, title, description, category, timeframe, motivation, slug, public, created_at) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, false, NOW())
+    // Insert using the JWT username
+    const insert = await pool.query(
+      `INSERT INTO journal (goal_id, username, note, progress, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
        RETURNING *`,
-      [username, title, description || "", category, timeframe, motivation || "", uniqueSlug]
+      [goal_id, req.user.username, note || "", progress]
     );
 
-    res.status(201).json(insertResult.rows[0]);
+    res.status(201).json(insert.rows[0]);
   } catch (err) {
-    console.error("Error creating goal:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("Error adding journal entry:", err);
+    res.status(500).json({ error: "Internal server error" });
   }
 });
+
 
 /* ------------------- GET public goal by slug ------------------- */
 router.get("/public/:username/:slug", async (req, res) => {
