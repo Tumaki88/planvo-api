@@ -40,25 +40,20 @@ router.post("/", auth, async (req, res) => {
     return res.status(400).json({ error: "`progress` must be 0–100" });
 
   try {
-    // Check ownership of goal
+    // Check that the goal belongs to the logged-in user
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
       [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    const username = req.user?.username || req.body.username;
-if (!username) {
-  return res.status(400).json({ error: "Username is required" });
-}
-
-const { title, pages } = req.body;
-
-await pool.query(
-  "INSERT INTO journal (username, title, pages) VALUES ($1, $2, $3)",
-  [username, title, pages]
-);
-
+    // Insert the journal entry
+    const insert = await pool.query(
+      `INSERT INTO journal (goal_id, username, note, progress, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING *`,
+      [goal_id, req.user.username, note || "", progress]
+    );
 
     res.status(201).json(insert.rows[0]);
   } catch (err) {
