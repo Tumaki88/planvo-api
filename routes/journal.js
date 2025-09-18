@@ -40,14 +40,14 @@ router.post("/", auth, async (req, res) => {
     return res.status(400).json({ error: "`progress` must be 0–100" });
 
   try {
-    // Check that the goal belongs to the logged-in user
+    // Check ownership of goal
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
       [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    // Insert the journal entry
+    // Insert correctly
     const insert = await pool.query(
       `INSERT INTO journal (goal_id, username, note, progress, created_at)
        VALUES ($1, $2, $3, $4, NOW())
