@@ -31,6 +31,7 @@ router.get("/", auth, async (req, res) => {
 
 // ---------- Add a journal entry ----------
 router.post("/", auth, async (req, res) => {
+  console.log("req.user:", req.user);
   const { goal_id, note, progress } = req.body;
   if (!goal_id || progress === undefined) return res.status(400).json({ error: "Missing fields" });
 
