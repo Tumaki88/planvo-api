@@ -1,22 +1,18 @@
-// routes/journal.js
 import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
-/* ------------------- GET all journal entries for a goal ------------------- */
+// ---------- GET journal entries ----------
 router.get("/", auth, async (req, res) => {
   const { goal_id } = req.query;
-  const username = req.user.username;
-
   if (!goal_id) return res.status(400).json({ error: "Missing goal_id" });
 
   try {
-    // Ensure the goal belongs to this user
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
-      [goal_id, username]
+      [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
@@ -32,29 +28,26 @@ router.get("/", auth, async (req, res) => {
   }
 });
 
-/* ------------------- ADD a journal entry ------------------- */
+// ---------- POST journal entry ----------
 router.post("/", auth, async (req, res) => {
   const { goal_id, note, progress } = req.body;
-  const username = req.user.username;
-
-  if (!goal_id || progress === undefined)
-    return res.status(400).json({ error: "Missing fields" });
-
+  if (!goal_id || progress === undefined) return res.status(400).json({ error: "Missing fields" });
   if (typeof progress !== "number" || progress < 0 || progress > 100)
     return res.status(400).json({ error: "`progress` must be 0–100" });
 
   try {
-    // Ensure the goal belongs to this user
+    // Ensure goal belongs to user
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
-      [goal_id, username]
+      [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
+    // Insert journal with username from token
     const insert = await pool.query(
-      `INSERT INTO journal (goal_id, username, note, progress, created_at)
+      `INSERT INTO journal (goal_id, username, note, progress, created_at) 
        VALUES ($1, $2, $3, $4, NOW()) RETURNING *`,
-      [goal_id, username, note || "", progress]
+      [goal_id, req.user.username, note || "", progress]
     );
 
     res.status(201).json(insert.rows[0]);
@@ -64,16 +57,14 @@ router.post("/", auth, async (req, res) => {
   }
 });
 
-/* ------------------- DELETE a journal entry ------------------- */
+// ---------- DELETE journal entry ----------
 router.delete("/:id", auth, async (req, res) => {
   const { id } = req.params;
-  const username = req.user.username;
 
   try {
-    // Ensure the journal entry belongs to a goal of this user
     const check = await pool.query(
       "SELECT j.* FROM journal j JOIN goals g ON j.goal_id = g.id WHERE j.id = $1 AND g.username = $2",
-      [id, username]
+      [id, req.user.username]
     );
     if (check.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
