@@ -1,15 +1,16 @@
+// routes/journal.js
 import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Get journal entries for a goal (only logged-in user's goals)
+// ---------- Get journal entries for a goal (only logged-in user's goals) ----------
 router.get("/", auth, async (req, res) => {
-  try {
-    const { goal_id } = req.query;
-    if (!goal_id) return res.status(400).json({ error: "Missing goal_id" });
+  const { goal_id } = req.query;
+  if (!goal_id) return res.status(400).json({ error: "Missing goal_id" });
 
+  try {
     // Ensure goal belongs to logged-in user
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
@@ -23,20 +24,20 @@ router.get("/", auth, async (req, res) => {
     );
     res.json(result.rows);
   } catch (err) {
-    console.error("GET /journal error:", err);
+    console.error("Error fetching journal entries:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Add a journal entry
+// ---------- Add a journal entry ----------
 router.post("/", auth, async (req, res) => {
+  const { goal_id, note, progress } = req.body;
+  if (!goal_id || progress === undefined) return res.status(400).json({ error: "Missing fields" });
+
+  if (typeof progress !== "number" || progress < 0 || progress > 100)
+    return res.status(400).json({ error: "`progress` must be 0–100" });
+
   try {
-    const { goal_id, note, progress } = req.body;
-    if (!goal_id || progress === undefined) return res.status(400).json({ error: "Missing fields" });
-
-    if (typeof progress !== "number" || progress < 0 || progress > 100)
-      return res.status(400).json({ error: "`progress` must be 0–100" });
-
     // Ensure goal belongs to user
     const goalCheck = await pool.query(
       "SELECT * FROM goals WHERE id = $1 AND username = $2",
@@ -45,23 +46,22 @@ router.post("/", auth, async (req, res) => {
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
     const insert = await pool.query(
-  "INSERT INTO journal (goal_id, username, note, progress, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
-  [goal_id, req.user.username, note || "", progress]
-);
-
+      "INSERT INTO journal (goal_id, username, note, progress, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
+      [goal_id, req.user.username, note || "", progress]
+    );
 
     res.status(201).json(insert.rows[0]);
   } catch (err) {
-    console.error("POST /journal error:", err);
+    console.error("Error adding journal entry:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Delete a journal entry
+// ---------- Delete a journal entry ----------
 router.delete("/:id", auth, async (req, res) => {
-  try {
-    const { id } = req.params;
+  const { id } = req.params;
 
+  try {
     // Ensure entry belongs to user's goal
     const check = await pool.query(
       "SELECT j.* FROM journal j JOIN goals g ON j.goal_id = g.id WHERE j.id = $1 AND g.username = $2",
@@ -72,7 +72,7 @@ router.delete("/:id", auth, async (req, res) => {
     await pool.query("DELETE FROM journal WHERE id = $1", [id]);
     res.json({ success: true });
   } catch (err) {
-    console.error("DELETE /journal/:id error:", err);
+    console.error("Error deleting journal entry:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
