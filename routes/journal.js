@@ -1,3 +1,4 @@
+// routes/journal.js
 import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
@@ -12,8 +13,8 @@ router.get("/", auth, async (req, res) => {
   try {
     // Ensure the goal belongs to the logged-in user
     const goalCheck = await pool.query(
-      "SELECT * FROM goals WHERE id = $1 AND user_id = $2",
-      [goal_id, req.user.id]
+      "SELECT * FROM goals WHERE id = $1 AND username = $2",
+      [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
@@ -41,17 +42,17 @@ router.post("/", auth, async (req, res) => {
   try {
     // Ensure the goal belongs to the logged-in user
     const goalCheck = await pool.query(
-      "SELECT * FROM goals WHERE id = $1 AND user_id = $2",
-      [goal_id, req.user.id]
+      "SELECT * FROM goals WHERE id = $1 AND username = $2",
+      [goal_id, req.user.username]
     );
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    // Insert into journal with user_id (not username)
+    // Insert into journal with username from JWT
     const insert = await pool.query(
-      `INSERT INTO journal (goal_id, user_id, note, progress, created_at)
+      `INSERT INTO journal (goal_id, username, note, progress, created_at)
        VALUES ($1, $2, $3, $4, NOW())
        RETURNING *`,
-      [goal_id, req.user.id, note || "", progress]
+      [goal_id, req.user.username, note || "", progress]
     );
 
     res.status(201).json(insert.rows[0]);
@@ -70,8 +71,8 @@ router.delete("/:id", auth, async (req, res) => {
     const check = await pool.query(
       `SELECT j.* FROM journal j
        JOIN goals g ON j.goal_id = g.id
-       WHERE j.id = $1 AND g.user_id = $2`,
-      [id, req.user.id]
+       WHERE j.id = $1 AND g.username = $2`,
+      [id, req.user.username]
     );
     if (check.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
