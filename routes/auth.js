@@ -28,25 +28,35 @@ router.post("/signup", async (req, res) => {
 });
 
 /* ------------------- LOGIN ------------------- */
+/* ------------------- LOGIN ------------------- */
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
-  if (!username || !password) return res.status(400).json({ error: "Missing fields" });
+  if (!username || !password)
+    return res.status(400).json({ error: "Missing fields" });
 
   try {
     const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
-    if (result.rows.length === 0) return res.status(401).json({ error: "Invalid credentials" });
+    if (result.rows.length === 0)
+      return res.status(401).json({ error: "Invalid credentials" });
 
     const user = result.rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ username: user.username }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
+    // ✅ Sign both id and username into the JWT
+    const token = jwt.sign(
+      { id: user.id, username: user.username },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "1h" }
+    );
+
     res.json({ success: true, token });
   } catch (err) {
-    console.error(err);
+    console.error("Login error:", err);
     res.status(500).json({ error: "Server error" });
   }
 });
+
 
 /* ------------------- CHANGE PASSWORD ------------------- */
 router.post("/change-password", auth, async (req, res) => {
