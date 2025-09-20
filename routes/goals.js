@@ -5,6 +5,33 @@ import slugify from "slugify";
 
 const router = express.Router();
 
+/* ------------------- GET public goal by slug ------------------- */
+router.get("/public/:username/:slug", async (req, res) => {
+  const { username, slug } = req.params;
+
+  try {
+    const goalsResult = await pool.query(
+      "SELECT * FROM goals WHERE username = $1 AND slug = $2 AND public = true LIMIT 1",
+      [username, slug]
+    );
+
+    if (goalsResult.rows.length === 0)
+      return res.status(404).json({ error: "Goal not found" });
+
+    const goal = goalsResult.rows[0];
+
+    const entriesResult = await pool.query(
+      "SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC",
+      [goal.id]
+    );
+
+    goal.journal = entriesResult.rows;
+    res.json(goal);
+  } catch (err) {
+    console.error("Error fetching public goal:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
 // Get all goals for logged-in user (with journal entries)
 router.get("/", auth, async (req, res) => {
   const username = req.user?.username;
