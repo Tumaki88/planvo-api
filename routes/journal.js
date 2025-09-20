@@ -4,21 +4,36 @@ import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
-// Get journal entries for a goal (only logged-in user's goals)
+// Get journal entries
+// If goal_id is provided, return that goal's entries (owned by user)
+// If missing, return recent entries across all goals owned by user
 router.get("/", auth, async (req, res) => {
   try {
     const username = req.user?.username;
     if (!username) return res.status(401).json({ error: "Unauthorized" });
 
     const { goal_id } = req.query;
-    if (!goal_id) return res.status(400).json({ error: "Missing goal_id" });
 
-    // Ensure goal belongs to logged-in user
-    const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [goal_id, username]);
-    if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
+    if (goal_id) {
+      // Ensure goal belongs to logged-in user
+      const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [goal_id, username]);
+      if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    const result = await pool.query("SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC", [goal_id]);
-    res.json(result.rows);
+      const result = await pool.query("SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC", [goal_id]);
+      return res.json(result.rows);
+    }
+
+    // No goal_id: return user's recent journal entries across all their goals
+    const result = await pool.query(
+      `SELECT j.*
+       FROM journal j
+       JOIN goals g ON j.goal_id = g.id
+       WHERE g.username = $1
+       ORDER BY j.created_at DESC
+       LIMIT 500`,
+      [username]
+    );
+    return res.json(result.rows);
   } catch (err) {
     console.error("GET /journal error", err);
     res.status(500).json({ error: "Failed to load journal" });
