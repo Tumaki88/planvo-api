@@ -1,6 +1,7 @@
 import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
+import slugify from "slugify";
 
 const router = express.Router();
 
@@ -40,9 +41,22 @@ router.post("/", auth, async (req, res) => {
     return res.status(400).json({ error: "Missing required fields" });
 
   try {
+    // Generate a non-null unique slug per user
+    const base = slugify(String(title), { lower: true, strict: true }) || "goal";
+    let candidate = base;
+    let i = 1;
+    // Ensure uniqueness for this user
+    // Small loop; breaks quickly in practice
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const exists = await pool.query("SELECT 1 FROM goals WHERE username = $1 AND slug = $2", [username, candidate]);
+      if (exists.rows.length === 0) break;
+      candidate = `${base}-${i++}`;
+    }
+
     const result = await pool.query(
-      "INSERT INTO goals (username, title, description, category, timeframe, motivation, created_at) VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *",
-      [username, title, description || "", category, timeframe, motivation || ""]
+      "INSERT INTO goals (username, title, description, category, timeframe, motivation, slug, public, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, false, NOW()) RETURNING *",
+      [username, title, description || "", category, timeframe, motivation || "", candidate]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -96,7 +110,7 @@ router.patch("/:id/public", auth, async (req, res) => {
     if (check.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
     const result = await pool.query(
-      "UPDATE goals SET public = $3, slug = $4 WHERE id = $1 AND username = $2 RETURNING *",
+      "UPDATE goals SET public = $3, slug = COALESCE($4, slug) WHERE id = $1 AND username = $2 RETURNING *",
       [id, username, !!isPublic, slug ?? null]
     );
     res.json(result.rows[0]);
