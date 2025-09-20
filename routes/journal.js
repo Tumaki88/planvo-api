@@ -15,11 +15,14 @@ router.get("/", auth, async (req, res) => {
     const { goal_id } = req.query;
 
     if (goal_id) {
+      const gid = parseInt(goal_id, 10);
+      if (!Number.isInteger(gid)) return res.status(400).json({ error: "Invalid goal_id" });
+
       // Ensure goal belongs to logged-in user
-      const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [goal_id, username]);
+      const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [gid, username]);
       if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-      const result = await pool.query("SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC", [goal_id]);
+      const result = await pool.query("SELECT * FROM journal WHERE goal_id = $1 ORDER BY created_at DESC", [gid]);
       return res.json(result.rows);
     }
 
@@ -47,19 +50,21 @@ router.post("/", auth, async (req, res) => {
     if (!username) return res.status(401).json({ error: "Unauthorized" });
 
     const { goal_id, note, progress } = req.body;
-    if (!goal_id || progress === undefined) return res.status(400).json({ error: "Missing fields" });
+    const gid = parseInt(goal_id, 10);
+    if (!Number.isInteger(gid) || progress === undefined) return res.status(400).json({ error: "Missing fields" });
 
-    if (typeof progress !== "number" || progress < 0 || progress > 100)
+    const prog = Number(progress);
+    if (!Number.isFinite(prog) || prog < 0 || prog > 100)
       return res.status(400).json({ error: "`progress` must be 0–100" });
 
     // Ensure goal belongs to user
-    const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [goal_id, username]);
+    const goalCheck = await pool.query("SELECT 1 FROM goals WHERE id = $1 AND username = $2", [gid, username]);
     if (goalCheck.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
     // Include username to satisfy NOT NULL if present in schema
     const insert = await pool.query(
       "INSERT INTO journal (goal_id, username, note, progress, created_at) VALUES ($1, $2, $3, $4, NOW()) RETURNING *",
-      [goal_id, username, note || "", progress]
+      [gid, username, note || "", prog]
     );
 
     res.status(201).json(insert.rows[0]);
@@ -76,15 +81,17 @@ router.delete("/:id", auth, async (req, res) => {
     if (!username) return res.status(401).json({ error: "Unauthorized" });
 
     const { id } = req.params;
+    const jid = parseInt(id, 10);
+    if (!Number.isInteger(jid)) return res.status(400).json({ error: "Invalid id" });
 
     // Ensure entry belongs to user's goal
     const check = await pool.query(
       "SELECT j.id FROM journal j JOIN goals g ON j.goal_id = g.id WHERE j.id = $1 AND g.username = $2",
-      [id, username]
+      [jid, username]
     );
     if (check.rows.length === 0) return res.status(403).json({ error: "Not allowed" });
 
-    await pool.query("DELETE FROM journal WHERE id = $1", [id]);
+    await pool.query("DELETE FROM journal WHERE id = $1", [jid]);
     res.json({ success: true });
   } catch (err) {
     console.error("DELETE /journal/:id error", err);
