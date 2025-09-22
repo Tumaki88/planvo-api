@@ -2,6 +2,7 @@ import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
 import slugify from "slugify";
+const { applyTimeframeReset } = require('../utils/timeframe');
 
 const router = express.Router();
 router.get("/public", async (req, res) => {
@@ -40,7 +41,7 @@ router.get("/public/:username/:slug", async (req, res) => {
     );
 
     goal.journal = entriesResult.rows;
-    res.json(goal);
+    res.json(goal ? applyTimeframeReset(goal) : null);
   } catch (err) {
     console.error("Error fetching public goal:", err);
     res.status(500).json({ error: "Server error" });
@@ -67,7 +68,8 @@ router.get("/", auth, async (req, res) => {
       `,
       [username]
     );
-    res.json(result.rows);
+    // Ensure progress is reset per timeframe for current period without losing journals
+    res.json(Array.isArray(result.rows) ? result.rows.map(g => applyTimeframeReset(g)) : []);
   } catch (err) {
     console.error("GET /goals error", err);
     res.status(500).json({ error: "Failed to load goals" });

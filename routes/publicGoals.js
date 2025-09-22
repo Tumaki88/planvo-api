@@ -1,6 +1,7 @@
 // backend/routes/publicGoals.js
 import express from "express";
 import pool from "../db.js";
+const { applyTimeframeReset } = require('../utils/timeframe');
 
 const router = express.Router();
 
@@ -28,7 +29,7 @@ router.get("/:username/:slug", async (req, res) => {
     );
 
     goal.journal = entriesResult.rows;
-    res.json(goal);
+    res.json(goal ? applyTimeframeReset(goal) : null);
   } catch (err) {
     console.error("Error fetching public goal:", err);
     res.status(500).json({ error: "Server error" });
