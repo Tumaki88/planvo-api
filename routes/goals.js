@@ -2,7 +2,7 @@ import express from "express";
 import pool from "../db.js";
 import auth from "../middleware/auth.js";
 import slugify from "slugify";
-const { applyTimeframeReset } = require('../utils/timeframe');
+import { applyTimeframeReset } from "../utils/timeframe.js";
 
 const router = express.Router();
 router.get("/public", async (req, res) => {
