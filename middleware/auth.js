@@ -5,7 +5,8 @@ const auth = (req, res, next) => {
   if (!token) return res.status(401).json({ error: "No token provided" });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Accept tokens regardless of exp so users stay logged in until they log out
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { ignoreExpiration: true });
     req.user = { username: decoded.username };
     next();
   } catch {
