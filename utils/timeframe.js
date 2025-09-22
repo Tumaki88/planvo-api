@@ -1,6 +1,6 @@
 // Utilities to apply timeframe-based progress reset on the fly (server-side)
 
-function getCurrentPeriodStart(timeframe, now = new Date()) {
+export function getCurrentPeriodStart(timeframe, now = new Date()) {
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth();
   const d = now.getUTCDate();
@@ -33,7 +33,7 @@ function sortJournals(journal) {
   return list.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 }
 
-function applyTimeframeReset(goal, now = new Date()) {
+export function applyTimeframeReset(goal, now = new Date()) {
   if (!goal) return goal;
   const timeframe = goal.timeframe || 'weekly';
   const periodStart = getCurrentPeriodStart(timeframe, now);
@@ -47,8 +47,3 @@ function applyTimeframeReset(goal, now = new Date()) {
   const bounded = Math.max(0, Math.min(100, Math.round(progress)));
   return { ...goal, progress: bounded };
 }
-
-module.exports = {
-  getCurrentPeriodStart,
-  applyTimeframeReset,
-};
