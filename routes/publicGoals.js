@@ -1,7 +1,7 @@
 // backend/routes/publicGoals.js
 import express from "express";
 import pool from "../db.js";
-const { applyTimeframeReset } = require('../utils/timeframe');
+import { applyTimeframeReset } from "../utils/timeframe.js";
 
 const router = express.Router();
 
