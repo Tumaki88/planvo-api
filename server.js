@@ -3,12 +3,13 @@ import express from "express";
 import cors from "cors";
 
 // Import routes
-import authRoutes from "./routes/auth.js";
-import goalRoutes from "./routes/goals.js";
-import journalRoutes from "./routes/journal.js";
-import settingsRoutes from "./routes/settings.js";
-import publicGoalsRoutes from "./routes/publicGoals.js";
-import likesRoutes from "./routes/likes.js";
+import authRoutes from './routes/auth.js';
+import entriesRoutes from './routes/entries.js';
+import goalsRoutes from './routes/goals.js';
+import journalRoutes from './routes/journal.js';
+import likesRoutes from './routes/likes.js';
+import publicGoalsRoutes from './routes/publicGoals.js';
+import settingsRoutes from './routes/settings.js';
 
 const app = express();
 
@@ -17,11 +18,13 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: "1mb" })); // prevent huge payloads
 
 // API routes
-app.use("/api/auth", authRoutes);
-app.use("/api/goals", goalRoutes);
-app.use("/api/journal", journalRoutes);
-app.use("/api/settings", settingsRoutes);
-app.use("/api/likes", likesRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/entries', entriesRoutes);
+app.use('/api/goals', goalsRoutes);
+app.use('/api/journal', journalRoutes);
+app.use('/api/likes', likesRoutes);
+app.use('/api/goals/public', publicGoalsRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Public-facing goals (username + slug)
 // Example: http://localhost:5000/adi/jee-mains

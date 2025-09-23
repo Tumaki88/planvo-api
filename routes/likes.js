@@ -1,7 +1,8 @@
-const express = require('express');
+import express from 'express';
+import pool from '../db.js';
+import auth from '../middleware/auth.js';
+
 const router = express.Router();
-const pool = require('../db');
-const auth = require('../middleware/auth');
 
 // Toggle like for a public goal by username/slug
 router.post('/:username/:slug', auth, async (req, res) => {
@@ -47,4 +48,4 @@ router.post('/:username/:slug', auth, async (req, res) => {
   }
 });
 
-module.exports = router;
+export default router;

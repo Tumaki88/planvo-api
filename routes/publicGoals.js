@@ -1,4 +1,3 @@
-// backend/routes/publicGoals.js
 import express from "express";
 import pool from "../db.js";
 import { applyTimeframeReset } from "../utils/timeframe.js";
