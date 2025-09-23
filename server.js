@@ -8,6 +8,7 @@ import goalRoutes from "./routes/goals.js";
 import journalRoutes from "./routes/journal.js";
 import settingsRoutes from "./routes/settings.js";
 import publicGoalsRoutes from "./routes/publicGoals.js";
+import likesRoutes from "./routes/likes.js";
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/goals", goalRoutes);
 app.use("/api/journal", journalRoutes);
 app.use("/api/settings", settingsRoutes);
+app.use("/api/likes", likesRoutes);
 
 // Public-facing goals (username + slug)
 // Example: http://localhost:5000/adi/jee-mains
